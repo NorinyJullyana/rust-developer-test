@@ -1,6 +1,5 @@
 name: Auto Create Release Branch
 
-# Trigger when a PR targets develop
 on:
   pull_request:
     branches:
@@ -10,42 +9,34 @@ on:
 
 jobs:
   create-release-branch:
-    # Only run if PR was merged
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout develop (the updated base after merge)
       - name: Checkout develop
         uses: actions/checkout@v4
         with:
           ref: develop
           fetch-depth: 0
 
-      # Extract version from Cargo.toml
       - name: Extract version
         id: version
         run: |
           VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d '"' -f2)
-
           if [[ -z "$VERSION" ]]; then
             echo "Version not found"
             exit 1
           fi
-
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # Configure git
       - name: Configure git
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-      # Create release branch if it does not exist
       - name: Create release branch
         run: |
           RELEASE_BRANCH="release/${{ steps.version.outputs.version }}"
-
           git fetch origin
 
           if git ls-remote --exit-code --heads origin $RELEASE_BRANCH; then
