@@ -5,7 +5,7 @@ on:
   pull_request:
     branches:
       - develop
-      - 'release/**'
+      - 'release/*'
       - main
 
 jobs:
@@ -15,61 +15,57 @@ jobs:
     steps:
       - name: Validate branch flow rules
         run: |
-          # Get source (head) and target (base) branches
           SOURCE="${{ github.head_ref }}"
           TARGET="${{ github.base_ref }}"
 
           echo "Source: $SOURCE"
           echo "Target: $TARGET"
 
-          # Rule 1: feature/* can only go to develop
+          # Skip validation for hotfix branch
+          if [[ "$SOURCE" == "hotfix" ]]; then
+            echo "Skipping branch flow validation for hotfix branch"
+            exit 0
+          fi
+
+          # Rule 1: feature/* → develop
           if [[ "$SOURCE" == feature/* && "$TARGET" == "develop" ]]; then
             echo "Valid: feature -> develop"
             exit 0
 
-          # Rule 2: develop can only go to release/*
+          # Rule 2: develop → release/*
           elif [[ "$SOURCE" == "develop" && "$TARGET" == release/* ]]; then
             echo "Valid: develop -> release"
             exit 0
 
-          # Rule 3: release/* can only go to main
+          # Rule 3: release/* → main
           elif [[ "$SOURCE" == release/* && "$TARGET" == "main" ]]; then
             echo "Valid: release -> main"
             exit 0
 
-          # Any other combination is invalid
           else
             echo "Invalid branch flow"
             exit 1
-          fi
 
   validate-release-version:
-    # Only run this job if target branch is release/*
     if: startsWith(github.base_ref, 'release/')
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Extract name and version from Cargo.toml
         run: |
-          # Extract package name
           NAME=$(grep '^name' Cargo.toml | head -1 | cut -d '"' -f2)
-
-          # Extract version
           VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d '"' -f2)
 
           echo "Package: $NAME"
           echo "Version: $VERSION"
 
-          # Fail if version is empty
           if [[ -z "$VERSION" ]]; then
             echo "Version not found in Cargo.toml"
             exit 1
           fi
 
-          # Optional: ensure version matches release branch name
           BRANCH_VERSION="${{ github.base_ref }}"
           BRANCH_VERSION="${BRANCH_VERSION#release/}"
 
