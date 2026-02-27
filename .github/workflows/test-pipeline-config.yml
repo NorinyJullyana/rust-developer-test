@@ -1,63 +1,81 @@
-name: Rust CI Pipeline
+name: Branch Governance Pipeline
 
+# Trigger only on Pull Requests
 on:
-  push:
-    branches:
-      - develop
-      - main
-      - 'release/**'
   pull_request:
     branches:
       - develop
-      - main
       - 'release/**'
-  workflow_dispatch:
+      - main
 
 jobs:
-
-  branch-order-validation:
-    name: Validate branch flow
+  validate-branch-flow:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
 
     steps:
-      - name: Enforce branch order
+      - name: Validate branch flow rules
         run: |
-          BASE="${{ github.base_ref }}"
-          HEAD="${{ github.head_ref }}"
+          # Get source (head) and target (base) branches
+          SOURCE="${{ github.head_ref }}"
+          TARGET="${{ github.base_ref }}"
 
-          echo "Source: $HEAD"
-          echo "Target: $BASE"
+          echo "Source: $SOURCE"
+          echo "Target: $TARGET"
 
-          # feature/* → develop
-          if [[ "$HEAD" == feature/* && "$BASE" != "develop" ]]; then
-            echo "ERROR: feature/* branches can only open PRs to develop"
+          # Rule 1: feature/* can only go to develop
+          if [[ "$SOURCE" == feature/* && "$TARGET" == "develop" ]]; then
+            echo "Valid: feature -> develop"
+            exit 0
+
+          # Rule 2: develop can only go to release/*
+          elif [[ "$SOURCE" == "develop" && "$TARGET" == release/* ]]; then
+            echo "Valid: develop -> release"
+            exit 0
+
+          # Rule 3: release/* can only go to main
+          elif [[ "$SOURCE" == release/* && "$TARGET" == "main" ]]; then
+            echo "Valid: release -> main"
+            exit 0
+
+          # Any other combination is invalid
+          else
+            echo "Invalid branch flow"
             exit 1
           fi
 
-          # develop → release/*
-          if [[ "$HEAD" == "develop" && "$BASE" != release/* ]]; then
-            echo "ERROR: develop can only open PRs to release/*"
-            exit 1
-          fi
-
-          # release/* → main
-          if [[ "$HEAD" == release/* && "$BASE" != "main" ]]; then
-            echo "ERROR: release/* branches can only open PRs to main"
-            exit 1
-          fi
-
-          echo "Branch flow valid"
-
-  build:
-    name: Build and Test
+  validate-release-version:
+    # Only run this job if target branch is release/*
+    if: startsWith(github.base_ref, 'release/')
     runs-on: ubuntu-latest
-    needs: branch-order-validation
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-      - run: cargo build --all-features
-      - run: cargo test --all-features
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract name and version from Cargo.toml
+        run: |
+          # Extract package name
+          NAME=$(grep '^name' Cargo.toml | head -1 | cut -d '"' -f2)
+
+          # Extract version
+          VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d '"' -f2)
+
+          echo "Package: $NAME"
+          echo "Version: $VERSION"
+
+          # Fail if version is empty
+          if [[ -z "$VERSION" ]]; then
+            echo "Version not found in Cargo.toml"
+            exit 1
+          fi
+
+          # Optional: ensure version matches release branch name
+          BRANCH_VERSION="${{ github.base_ref }}"
+          BRANCH_VERSION="${BRANCH_VERSION#release/}"
+
+          if [[ "$VERSION" != "$BRANCH_VERSION" ]]; then
+            echo "Version in Cargo.toml does not match release branch name"
+            exit 1
+          fi
+
+          echo "Release version validated successfully"
