@@ -1,6 +1,5 @@
 name: Branch Governance Pipeline
 
-# Trigger only on Pull Requests
 on:
   pull_request:
     branches:
@@ -30,21 +29,19 @@ jobs:
           # Rule 1: feature/* → develop
           if [[ "$SOURCE" == feature/* && "$TARGET" == "develop" ]]; then
             echo "Valid: feature -> develop"
-            exit 0
 
           # Rule 2: develop → release/*
           elif [[ "$SOURCE" == "develop" && "$TARGET" == release/* ]]; then
             echo "Valid: develop -> release"
-            exit 0
 
           # Rule 3: release/* → main
           elif [[ "$SOURCE" == release/* && "$TARGET" == "main" ]]; then
             echo "Valid: release -> main"
-            exit 0
 
           else
             echo "Invalid branch flow"
             exit 1
+          fi
 
   validate-release-version:
     if: startsWith(github.base_ref, 'release/')
