@@ -1,20 +1,25 @@
 name: Auto Create Release Branch
 
-# Trigger when code is pushed to develop
+# Trigger when a PR targets develop
 on:
-  push:
+  pull_request:
     branches:
       - develop
+    types:
+      - closed
 
 jobs:
   create-release-branch:
+    # Only run if PR was merged
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout repository with full history (needed to compare branches)
-      - name: Checkout repository
+      # Checkout develop (the updated base after merge)
+      - name: Checkout develop
         uses: actions/checkout@v4
         with:
+          ref: develop
           fetch-depth: 0
 
       # Extract version from Cargo.toml
@@ -24,42 +29,29 @@ jobs:
           VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d '"' -f2)
 
           if [[ -z "$VERSION" ]]; then
-            echo "Version not found in Cargo.toml"
+            echo "Version not found"
             exit 1
           fi
 
-          echo "Detected version: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # Configure git identity for automation
+      # Configure git
       - name: Configure git
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-      # Create release branch only if it does not exist
-      - name: Create release branch if needed
+      # Create release branch if it does not exist
+      - name: Create release branch
         run: |
           RELEASE_BRANCH="release/${{ steps.version.outputs.version }}"
 
-          echo "Checking if $RELEASE_BRANCH exists..."
+          git fetch origin
 
           if git ls-remote --exit-code --heads origin $RELEASE_BRANCH; then
-            echo "Release branch already exists. Skipping creation."
+            echo "Release branch already exists"
             exit 0
           fi
 
-          echo "Creating branch $RELEASE_BRANCH"
-
           git checkout -b $RELEASE_BRANCH
           git push origin $RELEASE_BRANCH
-
-      # Optional: Automatically open PR from release to main
-      - name: Create PR to main
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: release/${{ steps.version.outputs.version }}
-          base: main
-          title: "Release ${{ steps.version.outputs.version }}"
-          body: "Automated release branch created from develop."
